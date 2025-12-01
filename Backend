@@ -1,0 +1,98 @@
+// ======================= BACKEND =======================
+// File: server.js
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = 5000;
+const JWT_SECRET = "focusED_secret_key";
+
+// ====== MongoDB connection ======
+mongoose.connect('mongodb://127.0.0.1:27017/focusED', { useNewUrlParser: true, useUnifiedTopology: true })
+.then(() => console.log("MongoDB connected"))
+.catch(err => console.log(err));
+
+// ====== Schemas ======
+const userSchema = new mongoose.Schema({
+username: String,
+password: String,
+fp: { type: Number, default: 0 },
+focusChain: { type: Number, default: 0 },
+focusLevels: { type: Map, of: Number }, // {Math: 10, English: 5}
+tipsUnlocked: { type: [String], default: [] }
+});
+const User = mongoose.model('User', userSchema);
+
+// ====== Auth Routes ======
+app.post('/api/register', async (req, res) => {
+const { username, password } = req.body;
+const hashed = await bcrypt.hash(password, 10);
+const user = new User({ username, password: hashed });
+await user.save();
+res.json({ message: "User registered" });
+});
+
+app.post('/api/login', async (req, res) => {
+const { username, password } = req.body;
+const user = await User.findOne({ username });
+if (!user) return res.status(400).json({ message: "User not found" });
+const isValid = await bcrypt.compare(password, user.password);
+if (!isValid) return res.status(400).json({ message: "Invalid password" });
+const token = jwt.sign({ id: user._id }, JWT_SECRET);
+res.json({ token });
+});
+
+// ====== Middleware ======
+const auth = (req, res, next) => {
+const token = req.headers.authorization;
+if (!token) return res.status(401).json({ message: "No token" });
+try {
+const decoded = jwt.verify(token, JWT_SECRET);
+req.userId = decoded.id;
+next();
+} catch {
+return res.status(401).json({ message: "Invalid token" });
+}
+};
+
+// ====== Focus Session ======
+app.post('/api/start-session', auth, async (req, res) => {
+// start session: return start time
+res.json({ message: "Session started", startTime: Date.now() });
+});
+
+app.post('/api/complete-session', auth, async (req, res) => {
+const { durationMinutes, subject } = req.body; // duration in minutes
+const user = await User.findById(req.userId);
+
+// update FP
+user.fp += durationMinutes;
+// update focus chain
+user.focusChain += durationMinutes;
+// update focus level for subject
+const prevLevel = user.focusLevels.get(subject) || 0;
+user.focusLevels.set(subject, prevLevel + durationMinutes);
+
+// unlock tips example
+const tipsToUnlock = [];
+if (prevLevel + durationMinutes >= 5 && !user.tipsUnlocked.includes(`${subject}-5`)) tipsToUnlock.push(`${subject}-5`);
+if (prevLevel + durationMinutes >= 10 && !user.tipsUnlocked.includes(`${subject}-10`)) tipsToUnlock.push(`${subject}-10`);
+user.tipsUnlocked.push(...tipsToUnlock);
+
+await user.save();
+res.json({ fp: user.fp, focusChain: user.focusChain, focusLevels: user.focusLevels, tipsUnlocked: user.tipsUnlocked });
+});
+
+// ====== Leaderboard ======
+app.get('/api/leaderboard', async (req, res) => {
+const users = await User.find().sort({ fp: -1 }).limit(10).select('username fp');
+res.json(users);
+});
+
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
