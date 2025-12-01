@@ -1,73 +1,119 @@
-// ======================= FRONTEND =======================
-// File: App.js (React)
+{
+  "name": "focused-frontend",
+  "version": "1.0.0",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
+
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+body {
+  font-family: Arial;
+  margin: 0;
+  padding: 20px;
+  background: #f4f4f4;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  width: 400px;
+  margin: auto;
+  box-shadow: 0 0 10px #ccc;
+}
+
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const API = "[http://localhost:5000/api](http://localhost:5000/api)";
+const API = "http://localhost:5000/api";
 
-function App() {
-const [token, setToken] = useState("");
-const [username, setUsername] = useState("");
-const [password, setPassword] = useState("");
-const [subject, setSubject] = useState("Math");
-const [duration, setDuration] = useState(25);
-const [fp, setFP] = useState(0);
-const [chain, setChain] = useState(0);
-const [tips, setTips] = useState([]);
-const [leaderboard, setLeaderboard] = useState([]);
+export default function App() {
+  const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [subject, setSubject] = useState("Math");
+  const [duration, setDuration] = useState(25);
+  const [tips, setTips] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
 
-const register = async () => {
-await axios.post(`${API}/register`, { username, password });
-alert("Registered! Please login.");
-};
+  const login = async () => {
+    const res = await axios.post(`${API}/login`, { username, password });
+    setToken(res.data.token);
+  };
 
-const login = async () => {
-const res = await axios.post(`${API}/login`, { username, password });
-setToken(res.data.token);
-};
+  const register = async () => {
+    await axios.post(`${API}/register`, { username, password });
+    alert("Register success!");
+  };
 
-const startSession = async () => {
-await axios.post(`${API}/start-session`, {}, { headers: { Authorization: token } });
-alert("Focus session started. Do not switch tab!");
-// simple timer simulation
-setTimeout(completeSession, duration * 1000); // For testing, 1 sec = 1 min
-};
+  const startSession = async () => {
+    await axios.post(`${API}/start-session`, {}, { headers: { Authorization: token } });
 
-const completeSession = async () => {
-const res = await axios.post(`${API}/complete-session`, { durationMinutes: duration, subject }, { headers: { Authorization: token } });
-setFP(res.data.fp);
-setChain(res.data.focusChain);
-setTips(res.data.tipsUnlocked);
-alert("Session completed! FP earned: " + duration);
-fetchLeaderboard();
-};
+    alert("Started! Auto-complete after test timer");
+    setTimeout(completeSession, duration * 1000);
+  };
 
-const fetchLeaderboard = async () => {
-const res = await axios.get(`${API}/leaderboard`);
-setLeaderboard(res.data);
-};
+  const completeSession = async () => {
+    const res = await axios.post(
+      `${API}/complete-session`,
+      { durationMinutes: duration, subject },
+      { headers: { Authorization: token } }
+    );
 
-useEffect(() => { if(token) fetchLeaderboard(); }, [token]);
+    alert(`Completed! +${res.data.earned} FP`);
+  };
 
-return ( <div className="p-4">
-{!token ? ( <div> <h2>Register / Login</h2>
-<input placeholder="Username" onChange={e=>setUsername(e.target.value)} /><br/>
-<input placeholder="Password" type="password" onChange={e=>setPassword(e.target.value)} /><br/> <button onClick={register}>Register</button> <button onClick={login}>Login</button> </div>
-) : ( <div> <h2>Focus ED Dashboard</h2> <p>FP: {fp} | Chain: {chain}</p> <p>Tips unlocked: {tips.join(", ")}</p>
-<select onChange={e=>setSubject(e.target.value)} value={subject}> <option>Math</option><option>English</option><option>Business Law</option> </select>
-<input type="number" value={duration} onChange={e=>setDuration(e.target.value)} /> <button onClick={startSession}>Start Focus Session</button>
+  useEffect(() => {
+    axios.get(`${API}/tips`).then(res => setTips(res.data));
+    axios.get(`${API}/leaderboard`).then(res => setLeaderboard(res.data));
+  }, []);
 
-```
-      <h3>Leaderboard</h3>
-      <ul>
-        {leaderboard.map(u => (<li key={u._id}>{u.username}: {u.fp} FP</li>))}
-      </ul>
+  return (
+    <div className="card">
+      <h2>FocusED</h2>
+
+      {!token ? (
+        <>
+          <input placeholder="Username" onChange={e => setUsername(e.target.value)} />
+          <input placeholder="Password" type="password" onChange={e => setPassword(e.target.value)} />
+          <button onClick={login}>Login</button>
+          <button onClick={register}>Register</button>
+        </>
+      ) : (
+        <>
+          <h3>Start Focus Session</h3>
+          <input type="number" value={duration} onChange={e => setDuration(e.target.value)} />
+          <select value={subject} onChange={e => setSubject(e.target.value)}>
+            <option>Math</option>
+            <option>Physics</option>
+            <option>Chemistry</option>
+            <option>English</option>
+          </select>
+          <button onClick={startSession}>Start</button>
+
+          <h3>Tips</h3>
+          <ul>
+            {tips.map((t, i) => <li key={i}>{t}</li>)}
+          </ul>
+
+          <h3>Leaderboard</h3>
+          <ul>
+            {leaderboard.map((u, i) => (
+              <li key={i}>{u.username} — {u.focus_points} FP</li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
-  )}
-</div>
-```
-
-);
+  );
 }
-
-export default App;
